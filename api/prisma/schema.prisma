@@ -1,0 +1,130 @@
+/**
+ * File:        api/prisma/schema.prisma
+ * Module:      Database · Schema
+ * Purpose:     Prisma schema for UGC Boost data models
+ *
+ * Models:
+ *   - Shop          — Shopify store configuration
+ *   - Subscription   — Billing tier (free/pro/enterprise)
+ *   - Gallery       — Collection of UGC items
+ *   - UGCItem       — Customer-submitted photo/video
+ *   - Tag           — AI-generated tags for content
+ *   - Analytics     — Engagement tracking per UGC item
+ *
+ * Depends on:
+ *   - Prisma CLI and runtime
+ *
+ * Side-effects:
+ *   - Database migrations via prisma migrate
+ *
+ * Key invariants:
+ *   - Shop.id links to Shopify store domain
+ *   - UGCItem.galleryId references existing gallery
+ *   - Subscription.shopId references Shop
+ *
+ * Author:      UGC Boost Team
+ * Last-updated: 2026-05-12
+ */
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id            String         @id @default(cuid())
+  shopifyDomain String         @unique
+  accessToken   String
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+  galleries     Gallery[]
+}
+
+model Subscription {
+  id              String   @id @default(cuid())
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id])
+  tier            String   @default("free") // free | pro | enterprise
+  isPaid          Boolean  @default(false)
+  currentPeriodEnd DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([shopId])
+}
+
+model Gallery {
+  id             String      @id @default(cuid())
+  shopId         String
+  shop           Shop        @relation(fields: [shopId], references: [id])
+  name           String
+  description    String?
+  coverImageUrl  String?
+  isActive       Boolean     @default(true)
+  displayRules   Json        @default("{\"sortBy\":\"recent\",\"showCaption\":true,\"showCustomerName\":true,\"layout\":\"grid\"}")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  items          UGCItem[]
+
+  @@index([shopId])
+}
+
+model UGCItem {
+  id              String      @id @default(cuid())
+  galleryId       String
+  gallery         Gallery     @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  customerId      String
+  customerName    String?
+  customerEmail   String?
+  productId       String?
+  productTitle    String?
+  mediaUrl        String
+  mediaThumbnailUrl String?
+  mediaType       String      @default("photo") // photo | video
+  caption         String?
+  status          String      @default("pending") // pending | approved | rejected
+  engagement      Int         @default(0)
+  rating          Int?        // 1-5 stars
+  isInfluencer    Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  tags            Tag[]
+  analytics       Analytics[]
+
+  @@index([galleryId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String
+  ugcItemId String
+  ugcItem   UGCItem   @relation(fields: [ugcItemId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@unique([ugcItemId, name])
+  @@index([name])
+}
+
+model Analytics {
+  id            String   @id @default(cuid())
+  ugcItemId     String
+  ugcItem       UGCItem  @relation(fields: [ugcItemId], references: [id], onDelete: Cascade)
+  viewCount     Int      @default(0)
+  clickCount    Int      @default(0)
+  shareCount    Int      @default(0)
+  conversionCount Int    @default(0)
+  date          DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([ugcItemId, date])
+  @@index([ugcItemId])
+}
